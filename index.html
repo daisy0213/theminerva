@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minerva</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+     MINERVA — 美感收藏 app
+     資料儲存：localStorage（瀏覽器本地，重新整理不會消失）
+     圖片儲存：轉成 base64 存在 localStorage
+     連結預覽：用 microlink.io 免費 API 抓縮圖
+     ============================================================ -->
+
+<style>
+/* ============================================================
+   CSS 變數 — 改這裡可以換整個 app 的顏色
+   ============================================================ */
+:root {
+  --bg: #F5F3EF;
+  --surface: #FFFFFF;
+  --surface2: #EEEAE3;
+  --text: #1A1917;
+  --text2: #6B6860;
+  --text3: #A8A49C;
+  --border: rgba(26,25,23,0.1);
+  --border2: rgba(26,25,23,0.18);
+  --accent: #2D2926;
+  --purple: #7B6FBE;
+  --pink: #D4748A;
+  --teal: #4A9E8A;
+  --amber: #C8882A;
+  --blue: #5A8FC2;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── 整體三欄 layout ── */
+.shell { display: flex; height: 100vh; }
+.sidebar { width: 224px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.panel { width: 260px; flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; transition: width 0.3s ease; }
+.panel.collapsed { width: 0; border: none; }
+
+/* ── Sidebar 上方 logo ── */
+.sidebar-top { padding: 24px 20px 16px; }
+.logo { font-family: 'DM Serif Display', serif; font-size: 22px; letter-spacing: -0.5px; color: var(--text); }
+.logo span { font-style: italic; color: var(--text2); }
+.tagline { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.3px; }
+
+/* ── 左側導覽 ── */
+.nav { padding: 8px 0; }
+.nav-section-label { font-size: 10px; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; padding: 10px 20px 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 20px; font-size: 13px; color: var(--text2); cursor: pointer; transition: all 0.12s; user-select: none; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { color: var(--text); font-weight: 500; background: var(--surface2); }
+.nav-icon { font-size: 15px; opacity: 0.7; width: 18px; text-align: center; }
+.nav-count { margin-left: auto; font-size: 11px; color: var(--text3); }
+
+/* ── Board 清單 ── */
+.boards-list { flex: 1; overflow-y: auto; padding: 0 0 8px; }
+.board-row { display: flex; align-items: center; gap: 8px; padding: 7px 20px; font-size: 12.5px; color: var(--text2); cursor: pointer; transition: background 0.1s; }
+.board-row:hover { background: var(--surface2); }
+.board-row.active { color: var(--text); font-weight: 500; }
+.board-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.board-count { margin-left: auto; font-size: 11px; color: var(--text3); }
+.board-new { font-size: 12px; color: var(--text3); padding: 6px 20px; cursor: pointer; }
+.board-new:hover { color: var(--text2); }
+
+/* ── 朋友頭像（底部）── */
+.sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+.friends-label { font-size: 10px; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 10px; }
+.avatars-row { display: flex; align-items: center; gap: 6px; }
+.av { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 500; cursor: pointer; border: 2px solid var(--surface); transition: transform 0.15s; }
+.av:hover { transform: scale(1.1); }
+.av-me { background: #E8E4F8; color: #5A4FA8; }
+.av-a  { background: #FAE4EA; color: #A84B62; }
+.av-b  { background: #D9F0EA; color: #2E7A65; }
+.av-c  { background: #FDF0DC; color: #9A6518; }
+.av-invite { background: var(--surface2); color: var(--text3); border: 1.5px dashed var(--border2); font-size: 16px; }
+
+/* ── 頂部 bar ── */
+.topbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface); flex-shrink: 0; }
+.topbar-left h1 { font-family: 'DM Serif Display', serif; font-size: 20px; letter-spacing: -0.3px; }
+.topbar-left .meta { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.topbar-right { display: flex; gap: 8px; align-items: center; }
+.btn { font-family: 'DM Sans', sans-serif; font-size: 12.5px; padding: 7px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--surface); color: var(--text); cursor: pointer; transition: all 0.12s; }
+.btn:hover { background: var(--surface2); }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover { background: #3D3A36; }
+.icon-btn { width: 34px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px; transition: background 0.12s; }
+.icon-btn:hover { background: var(--surface2); }
+
+/* ── Filter chips ── */
+.filterbar { padding: 10px 24px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; background: var(--bg); flex-shrink: 0; overflow-x: auto; }
+.chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); cursor: pointer; white-space: nowrap; transition: all 0.12s; display: flex; align-items: center; gap: 5px; }
+.chip:hover { border-color: var(--border2); color: var(--text); }
+.chip.active { background: var(--text); color: #fff; border-color: var(--text); }
+.chip-av { width: 16px; height: 16px; border-radius: 50%; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: 500; }
+
+/* ── 主要卡片 grid（masonry 瀑布流）── */
+.grid-area { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.masonry { columns: 4; column-gap: 12px; }
+@media (max-width: 1200px) { .masonry { columns: 3; } }
+@media (max-width: 900px)  { .masonry { columns: 2; } }
+
+/* ── 單張卡片 ── */
+.card {
+  break-inside: avoid;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  animation: fadeIn 0.3s ease both;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+
+/* 卡片圖片區 */
+.card-img { width: 100%; display: block; object-fit: cover; }
+.card-img-placeholder {
+  width: 100%;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: var(--text3);
+}
+
+/* 卡片文字區 */
+.card-body { padding: 10px 12px; }
+.card-title { font-size: 12.5px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-source { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* 卡片底部 tag + 頭像 */
+.card-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--border); }
+.card-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.tag { font-size: 10px; padding: 2px 7px; border-radius: 10px; }
+.card-owner-av { width: 20px; height: 20px; border-radius: 50%; font-size: 8px; display: flex; align-items: center; justify-content: center; font-weight: 500; }
+
+/* 卡片刪除按鈕（hover 才出現）*/
+.card-delete {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 24px; height: 24px;
+  background: rgba(26,25,23,0.6);
+  color: #fff;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 2;
+}
+.card { position: relative; }
+.card:hover .card-delete { display: flex; }
+
+/* tag 顏色 — 可自行新增 */
+.t-minimal  { background: #E8E4F8; color: #5A4FA8; }
+.t-type     { background: #D9F0EA; color: #2E7A65; }
+.t-interior { background: #FAE4EA; color: #A84B62; }
+.t-colour   { background: #FDF0DC; color: #9A6518; }
+.t-arch     { background: #DDE8F4; color: #2E5A8A; }
+.t-product  { background: #F4E8E0; color: #8A4A2E; }
+.t-link     { background: #E0F0EC; color: #2E7A65; }
+
+/* 新增卡片的虛線框 */
+.add-card { break-inside: avoid; margin-bottom: 12px; border-radius: var(--radius); border: 1.5px dashed var(--border2); height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: var(--text3); transition: all 0.15s; gap: 6px; }
+.add-card:hover { border-color: var(--text3); color: var(--text2); background: rgba(255,255,255,0.5); }
+.add-card span { font-size: 20px; }
+.add-card p { font-size: 12px; }
+
+/* 空狀態提示 */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; gap: 12px; color: var(--text3); }
+.empty-state span { font-size: 36px; }
+.empty-state p { font-size: 14px; }
+
+/* ── 右側 insight 面板 ── */
+.panel-inner { padding: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.panel-header { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.panel-header h3 { font-size: 13px; font-weight: 500; }
+.close-btn { font-size: 16px; color: var(--text3); cursor: pointer; line-height: 1; }
+.close-btn:hover { color: var(--text); }
+.insight-section { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.ins-label { font-size: 10px; color: var(--text3); letter-spacing: 0.7px; text-transform: uppercase; margin-bottom: 10px; }
+.taste-row { margin-bottom: 10px; }
+.taste-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.taste-name { font-size: 12px; color: var(--text2); }
+.taste-val { font-size: 11px; color: var(--text3); }
+.bar-bg { height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+.bar { height: 100%; border-radius: 3px; }
+.pair-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.pair-avs { display: flex; flex-direction: column; gap: 3px; }
+.pair-av { width: 22px; height: 22px; border-radius: 50%; font-size: 9px; display: flex; align-items: center; justify-content: center; font-weight: 500; }
+.pair-text { font-size: 12px; color: var(--text2); line-height: 1.5; flex: 1; }
+.pair-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.pair-tag { font-size: 10px; padding: 2px 8px; border-radius: 10px; }
+
+/* ── 新增靈感 Modal ── */
+.modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(26,25,23,0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.modal-bg.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  width: 440px;
+  overflow: hidden;
+  transform: translateY(12px);
+  transition: transform 0.2s;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-bg.open .modal { transform: translateY(0); }
+.modal-top { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.modal-top h2 { font-family: 'DM Serif Display', serif; font-size: 18px; }
+.modal-body { padding: 20px 24px; }
+
+/* Drop zone（拖拉上傳區域）*/
+.drop-zone {
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--radius);
+  padding: 28px;
+  text-align: center;
+  color: var(--text3);
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--surface2); }
+.drop-icon { font-size: 28px; margin-bottom: 8px; }
+.drop-text { font-size: 13px; margin-bottom: 4px; color: var(--text2); }
+.drop-sub { font-size: 11px; color: var(--text3); }
+
+/* 圖片預覽（選完圖後顯示）*/
+.img-preview-wrap { position: relative; margin-bottom: 12px; display: none; }
+.img-preview-wrap.show { display: block; }
+.img-preview { width: 100%; max-height: 200px; object-fit: cover; border-radius: var(--radius-sm); }
+.img-preview-remove { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.5); color: #fff; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+
+.divider { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--text3); font-size: 12px; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* 輸入欄位 */
+.input-group { margin-bottom: 12px; }
+.input-group label { font-size: 11px; color: var(--text2); display: block; margin-bottom: 5px; font-weight: 500; }
+.input-group input, .input-group select, .input-group textarea {
+  width: 100%; padding: 9px 12px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input-group input:focus, .input-group select:focus, .input-group textarea:focus { border-color: var(--accent); }
+.input-group textarea { resize: vertical; min-height: 60px; }
+
+/* 連結預覽卡片 */
+.url-preview { background: var(--bg); border-radius: var(--radius-sm); overflow: hidden; margin-top: 8px; border: 1px solid var(--border); display: none; }
+.url-preview.show { display: block; }
+.url-preview-img { width: 100%; height: 120px; object-fit: cover; background: var(--surface2); display: block; }
+.url-preview-img-placeholder { width: 100%; height: 80px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text3); }
+.url-preview-body { padding: 10px 12px; }
+.url-preview-title { font-size: 12.5px; font-weight: 500; color: var(--text); }
+.url-preview-domain { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* 載入中 spinner */
+.spinner { width: 14px; height: 14px; border: 1.5px solid var(--border2); border-top-color: var(--text2); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+.url-loading { display: none; align-items: center; gap: 8px; font-size: 12px; color: var(--text3); padding: 8px 0; }
+.url-loading.show { display: flex; }
+
+.modal-footer { padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ── Toast 通知 ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(8px);
+  background: var(--accent); color: #fff;
+  padding: 10px 20px; border-radius: 20px;
+  font-size: 13px;
+  opacity: 0; pointer-events: none;
+  transition: all 0.3s;
+  z-index: 200;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ── Board hover 操作按鈕 ── */
+.board-row { position: relative; }
+.board-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.board-row:hover .board-actions { opacity: 1; }
+.board-action-btn {
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.board-action-btn:hover { background: rgba(26,25,23,0.08); color: var(--text); }
+
+/* ── 色盤 Popover ── */
+.color-popover {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  z-index: 300;
+  width: 196px;
+  display: none;
+}
+.color-popover.open { display: block; }
+.color-popover-title { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 10px; }
+.color-swatches {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.color-swatch {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.12s;
+  border: 2px solid transparent;
+  outline: none;
+}
+.color-swatch:hover { transform: scale(1.18); }
+.color-swatch.selected { border-color: var(--text); }
+.color-custom-row { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.color-custom-row label { font-size: 11px; color: var(--text2); flex: 1; }
+.color-custom-input { width: 32px; height: 28px; border: 1px solid var(--border2); border-radius: 6px; cursor: pointer; padding: 2px; background: none; }
+
+/* ── Profile 頭像（sidebar 底部）── */
+.sidebar-footer { padding: 12px 16px 16px; border-top: 1px solid var(--border); }
+.profile-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: var(--radius-sm); cursor: pointer; transition: background 0.12s; }
+.profile-row:hover { background: var(--surface2); }
+.profile-avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; flex-shrink: 0; border: 2px solid var(--surface); }
+.profile-info { flex: 1; min-width: 0; }
+.profile-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.profile-handle { font-size: 11px; color: var(--text3); }
+.profile-edit-icon { font-size: 13px; color: var(--text3); }
+
+.friends-section { margin-top: 10px; }
+.friends-label { font-size: 10px; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; }
+.friends-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.friend-chip { display: flex; align-items: center; gap: 5px; padding: 4px 8px 4px 4px; background: var(--surface2); border-radius: 20px; cursor: pointer; transition: background 0.12s; }
+.friend-chip:hover { background: var(--border); }
+.friend-avatar { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 500; flex-shrink: 0; }
+.friend-chip-name { font-size: 11px; color: var(--text2); }
+.friend-add-chip { display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: transparent; border: 1px dashed var(--border2); border-radius: 20px; cursor: pointer; font-size: 11px; color: var(--text3); transition: all 0.12s; }
+.friend-add-chip:hover { border-color: var(--text3); color: var(--text2); }
+
+/* ── Profile Modal ── */
+.profile-modal-avatar-row { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.profile-modal-avatar { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; flex-shrink: 0; }
+.avatar-color-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.avatar-color-pick { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.12s; }
+.avatar-color-pick:hover { transform: scale(1.15); }
+.avatar-color-pick.selected { border-color: var(--text); }
+
+/* ── Friends Modal ── */
+.friends-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.friend-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--bg); border-radius: var(--radius-sm); }
+.friend-row-info { flex: 1; min-width: 0; }
+.friend-row-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.friend-row-handle { font-size: 11px; color: var(--text3); }
+.friend-row-remove { font-size: 12px; color: var(--text3); cursor: pointer; padding: 4px; border-radius: 4px; }
+.friend-row-remove:hover { background: var(--surface2); color: var(--text); }
+.friend-empty { font-size: 13px; color: var(--text3); text-align: center; padding: 20px 0; }
+
+/* ── Animations ── */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ============================================================
+       左側 Sidebar
+       ============================================================ -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="logo">Min<span>erva</span></div>
+      <div class="tagline">your aesthetic archive</div>
+    </div>
+
+    <!-- 主導覽 -->
+    <nav class="nav">
+      <div class="nav-section-label">Library</div>
+      <div class="nav-item active" onclick="setNavView(this, 'all')">
+        <span class="nav-icon">⊞</span> All saves
+        <span class="nav-count" id="count-all">0</span>
+      </div>
+      <div class="nav-item" onclick="setNavView(this, 'mine')">
+        <span class="nav-icon">↗</span> Added by me
+        <span class="nav-count" id="count-mine">0</span>
+      </div>
+    </nav>
+
+    <!-- Board 清單 -->
+    <nav class="nav" style="border-top: 1px solid var(--border); flex: 1; display: flex; flex-direction: column; min-height: 0;">
+      <div class="nav-section-label">Boards</div>
+      <div class="boards-list" id="boards-list">
+        <!-- JS 動態產生 -->
+      </div>
+      <div class="board-new" onclick="createBoard()">＋ New board</div>
+    </nav>
+
+    <!-- Profile + 朋友（底部）-->
+    <div class="sidebar-footer">
+      <!-- 自己的 profile -->
+      <div class="profile-row" onclick="openProfileModal()">
+        <div class="profile-avatar" id="sidebar-my-avatar" style="background:#E8E4F8;color:#5A4FA8;">Yu</div>
+        <div class="profile-info">
+          <div class="profile-name" id="sidebar-my-name">Yu</div>
+          <div class="profile-handle" id="sidebar-my-handle">@yu</div>
+        </div>
+        <span class="profile-edit-icon">✎</span>
+      </div>
+      <!-- 朋友清單 -->
+      <div class="friends-section">
+        <div class="friends-label">Friends</div>
+        <div class="friends-chips" id="sidebar-friends">
+          <!-- JS 動態產生 -->
+        </div>
+        <div class="friend-add-chip" onclick="openFriendsModal()" style="margin-top:6px;">＋ Add friend</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================================================
+       中間主內容
+       ============================================================ -->
+  <main class="main">
+
+    <!-- 頂部標題列 -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1 id="board-title">All saves</h1>
+        <div class="meta" id="board-meta">0 items</div>
+      </div>
+      <div class="topbar-right">
+        <div class="icon-btn" title="Toggle insights" onclick="togglePanel()">◑</div>
+        <button class="btn" onclick="openModal('link')">＋ Add link</button>
+        <button class="btn primary" onclick="openModal('upload')">↑ Upload</button>
+      </div>
+    </div>
+
+    <!-- 篩選列 -->
+    <div class="filterbar">
+      <button class="chip active" onclick="setFilter(this, 'all')">All</button>
+      <button class="chip" onclick="setFilter(this, 'image')">🖼 Images</button>
+      <button class="chip" onclick="setFilter(this, 'link')">⬡ Links</button>
+    </div>
+
+    <!-- 卡片 grid -->
+    <div class="grid-area">
+      <div class="masonry" id="grid">
+        <div class="add-card" onclick="openModal('upload')">
+          <span>＋</span>
+          <p>Add inspiration</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ============================================================
+       右側 Insight 面板（品味分析）
+       ============================================================ -->
+  <div class="panel" id="panel">
+    <div class="panel-inner">
+      <div class="panel-header">
+        <h3>Taste insights</h3>
+        <span class="close-btn" onclick="togglePanel()">✕</span>
+      </div>
+
+      <div class="insight-section">
+        <div class="ins-label">Your collection</div>
+        <div class="taste-row">
+          <div class="taste-header">
+            <span class="taste-name">Images uploaded</span>
+            <span class="taste-val" id="insight-images">0</span>
+          </div>
+          <div class="bar-bg"><div class="bar" id="bar-images" style="width:0%;background:#AFA9EC;"></div></div>
+        </div>
+        <div class="taste-row">
+          <div class="taste-header">
+            <span class="taste-name">Links saved</span>
+            <span class="taste-val" id="insight-links">0</span>
+          </div>
+          <div class="bar-bg"><div class="bar" id="bar-links" style="width:0%;background:#5DCAA5;"></div></div>
+        </div>
+      </div>
+
+      <div class="insight-section">
+        <div class="ins-label">Top boards</div>
+        <div id="insight-boards">
+          <!-- JS 動態產生 -->
+          <div style="font-size:12px;color:var(--text3);">No boards yet</div>
+        </div>
+      </div>
+
+      <div class="insight-section">
+        <div class="ins-label">Recent sources</div>
+        <div id="insight-sources">
+          <div style="font-size:12px;color:var(--text3);">No saves yet</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- end .shell -->
+
+
+<!-- ============================================================
+     新增靈感 Modal
+     ============================================================ -->
+<div class="modal-bg" id="modal-bg" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-top">
+      <h2>Add inspiration</h2>
+      <span class="close-btn" onclick="closeModal()">✕</span>
+    </div>
+    <div class="modal-body">
+
+      <!-- 上傳圖片區 -->
+      <div id="upload-section">
+        <div class="drop-zone" id="drop-zone"
+          onclick="document.getElementById('file-input').click()"
+          ondragover="handleDragOver(event)"
+          ondragleave="handleDragLeave(event)"
+          ondrop="handleDrop(event)">
+          <div class="drop-icon">↑</div>
+          <div class="drop-text">Drop image here, or click to browse</div>
+          <div class="drop-sub">PNG, JPG, GIF, WEBP — up to 5MB</div>
+        </div>
+        <!-- 選完圖後的預覽 -->
+        <div class="img-preview-wrap" id="img-preview-wrap">
+          <img class="img-preview" id="img-preview" src="" alt="">
+          <button class="img-preview-remove" onclick="removeImage()">✕</button>
+        </div>
+        <input type="file" id="file-input" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+      </div>
+
+      <div class="divider">or add a link</div>
+
+      <!-- 貼上連結區 -->
+      <div class="input-group">
+        <label>URL</label>
+        <input type="url" id="url-input" placeholder="https://are.na/... 或任何網頁" oninput="handleUrlInput(this.value)">
+        <!-- 載入中 -->
+        <div class="url-loading" id="url-loading">
+          <div class="spinner"></div>
+          <span>Fetching preview...</span>
+        </div>
+        <!-- 預覽卡片 -->
+        <div class="url-preview" id="url-preview">
+          <div id="url-preview-img-container"></div>
+          <div class="url-preview-body">
+            <div class="url-preview-title" id="preview-title"></div>
+            <div class="url-preview-domain" id="preview-domain"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Board 選擇 -->
+      <div class="input-group">
+        <label>Board</label>
+        <select id="board-select">
+          <!-- JS 動態填入 -->
+        </select>
+      </div>
+
+      <!-- 標題（自動填入，可修改）-->
+      <div class="input-group">
+        <label>Title</label>
+        <input type="text" id="title-input" placeholder="給這張靈感一個名字">
+      </div>
+
+      <!-- 備註 -->
+      <div class="input-group">
+        <label>Note (optional)</label>
+        <textarea id="note-input" placeholder="What caught your eye?"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" onclick="saveItem()">Save to board</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 通知 -->
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================
+     Profile Modal — 編輯自己的資料
+     ============================================================ -->
+<div class="modal-bg" id="profile-modal-bg" onclick="closeProfileModalOutside(event)">
+  <div class="modal" style="width:380px;">
+    <div class="modal-top">
+      <h2>Your profile</h2>
+      <span class="close-btn" onclick="closeProfileModal()">✕</span>
+    </div>
+    <div class="modal-body">
+
+      <!-- 頭像預覽 + 顏色選擇 -->
+      <div class="profile-modal-avatar-row">
+        <div class="profile-modal-avatar" id="profile-preview-avatar" style="background:#E8E4F8;color:#5A4FA8;">Yu</div>
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:500;">Avatar colour</div>
+          <div class="avatar-color-picks" id="avatar-color-picks">
+            <!-- JS 動態產生 -->
+          </div>
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label>Display name</label>
+        <input type="text" id="profile-name-input" placeholder="Your name" oninput="updateProfilePreview()">
+      </div>
+      <div class="input-group">
+        <label>Handle</label>
+        <input type="text" id="profile-handle-input" placeholder="@yourname" oninput="updateProfilePreview()">
+      </div>
+      <div class="input-group">
+        <label>Bio (optional)</label>
+        <textarea id="profile-bio-input" placeholder="A short line about your aesthetic taste..." style="min-height:60px;"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeProfileModal()">Cancel</button>
+      <button class="btn primary" onclick="saveProfile()">Save profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     Friends Modal — 管理朋友
+     ============================================================ -->
+<div class="modal-bg" id="friends-modal-bg" onclick="closeFriendsModalOutside(event)">
+  <div class="modal" style="width:400px;">
+    <div class="modal-top">
+      <h2>Friends</h2>
+      <span class="close-btn" onclick="closeFriendsModal()">✕</span>
+    </div>
+    <div class="modal-body">
+
+      <!-- 現有朋友清單 -->
+      <div id="friends-list-container">
+        <!-- JS 動態產生 -->
+      </div>
+
+      <!-- 新增朋友 -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;">
+        <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:10px;">Add a friend</div>
+        <div class="input-group">
+          <label>Name</label>
+          <input type="text" id="new-friend-name" placeholder="Friend's name">
+        </div>
+        <div class="input-group">
+          <label>Handle (optional)</label>
+          <input type="text" id="new-friend-handle" placeholder="@theirhandle">
+        </div>
+        <!-- 頭像顏色 -->
+        <div class="input-group">
+          <label>Avatar colour</label>
+          <div class="avatar-color-picks" id="new-friend-color-picks" style="margin-top:4px;">
+            <!-- JS 動態產生 -->
+          </div>
+        </div>
+        <button class="btn primary" style="width:100%;margin-top:4px;" onclick="addFriend()">＋ Add friend</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 色盤 Popover（改 board 顏色用）-->
+<div class="color-popover" id="color-popover">
+  <div class="color-popover-title">Pick a colour</div>
+  <div class="color-swatches" id="color-swatches">
+    <!-- JS 動態產生色塊 -->
+  </div>
+  <div class="color-custom-row">
+    <label>Custom</label>
+    <input type="color" class="color-custom-input" id="color-custom-input" onchange="applyCustomColor(this.value)">
+  </div>
+</div>
+
+
+<!-- ============================================================
+     JavaScript
+     ============================================================ -->
+<script>
+
+/* ============================================================
+   1. 資料層 — 所有資料存在 localStorage
+   ============================================================ */
+
+// 預設 boards
+const DEFAULT_BOARDS = [
+  { id: 'japanese-minimal', name: 'Japanese minimal', color: '#AFA9EC' },
+  { id: 'typography',       name: 'Typography finds', color: '#5DCAA5' },
+  { id: 'architecture',     name: 'Architecture',     color: '#5A8FC2' },
+  { id: 'colour-palette',   name: 'Colour palette',   color: '#FAC775' },
+  { id: 'product-packaging',name: 'Product packaging',color: '#D4748A' },
+];
+
+// 從 localStorage 讀取，若無則用預設值
+function getBoards() {
+  const saved = localStorage.getItem('minerva_boards');
+  return saved ? JSON.parse(saved) : DEFAULT_BOARDS;
+}
+
+// 儲存 boards 到 localStorage
+function saveBoards(boards) {
+  localStorage.setItem('minerva_boards', JSON.stringify(boards));
+}
+
+// 從 localStorage 讀取所有收藏
+function getItems() {
+  const saved = localStorage.getItem('minerva_items');
+  return saved ? JSON.parse(saved) : [];
+}
+
+// 儲存所有收藏到 localStorage
+function saveItems(items) {
+  localStorage.setItem('minerva_items', JSON.stringify(items));
+}
+
+// ── Profile ──
+function getProfile() {
+  const saved = localStorage.getItem('minerva_profile');
+  return saved ? JSON.parse(saved) : {
+    name:   'Yu',
+    handle: '@yu',
+    bio:    '',
+    color:  '#E8E4F8',   // 頭像背景色
+    textColor: '#5A4FA8' // 頭像文字色
+  };
+}
+function saveProfile_data(profile) {
+  localStorage.setItem('minerva_profile', JSON.stringify(profile));
+}
+
+// ── Friends ──
+function getFriends() {
+  const saved = localStorage.getItem('minerva_friends');
+  return saved ? JSON.parse(saved) : [];
+}
+function saveFriends(friends) {
+  localStorage.setItem('minerva_friends', JSON.stringify(friends));
+}
+
+
+/* ============================================================
+   2. 狀態管理
+   ============================================================ */
+
+let currentView   = 'all';     // 'all' | 'mine' | board id
+let currentFilter = 'all';     // 'all' | 'image' | 'link'
+let panelOpen     = true;
+let urlTimer      = null;       // 防抖 timer
+let pendingImage  = null;       // 待儲存的圖片 base64
+let previewData   = null;       // 連結預覽資料
+
+
+/* ============================================================
+   3. 頁面初始化
+   ============================================================ */
+
+window.addEventListener('DOMContentLoaded', () => {
+  renderBoards();
+  renderGrid();
+  updateInsights();
+  updateCounts();
+  renderSidebarProfile();
+  renderSidebarFriends();
+});
+
+
+/* ============================================================
+   4. Board 管理
+   ============================================================ */
+
+// 渲染左側 board 清單
+function renderBoards() {
+  const boards = getBoards();
+  const items  = getItems();
+  const list   = document.getElementById('boards-list');
+
+  list.innerHTML = boards.map(b => {
+    const count = items.filter(i => i.boardId === b.id).length;
+    const isActive = currentView === b.id;
+    return `
+      <div class="board-row ${isActive ? 'active' : ''}" onclick="setBoard('${b.id}', '${b.name}')">
+        <span class="board-dot"
+          style="background:${b.color}; cursor:pointer;"
+          onclick="openColorPicker(event, '${b.id}')"
+          title="Change colour"></span>
+        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${b.name}</span>
+        <div class="board-actions" onclick="event.stopPropagation()">
+          <div class="board-action-btn" onclick="renameBoard('${b.id}')" title="Rename">✎</div>
+        </div>
+        <span class="board-count">${count}</span>
+      </div>`;
+  }).join('');
+
+  // 同步更新 modal 裡的 board 選單
+  const select = document.getElementById('board-select');
+  select.innerHTML = boards.map(b =>
+    `<option value="${b.id}">${b.name}</option>`
+  ).join('');
+}
+
+// 切換到某個 board
+function setBoard(boardId, boardName) {
+  currentView = boardId;
+  document.getElementById('board-title').textContent = boardName;
+  document.querySelectorAll('.board-row').forEach(r => r.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(r => r.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  renderGrid();
+  updateInsights();
+}
+
+// 建立新 board
+function createBoard() {
+  const name = prompt('New board name:');
+  if (!name || !name.trim()) return;
+
+  const boards = getBoards();
+  const colors = ['#AFA9EC','#5DCAA5','#5A8FC2','#FAC775','#D4748A','#F0997B','#85B7EB'];
+  const color  = colors[boards.length % colors.length];
+  const id     = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now();
+
+  boards.push({ id, name: name.trim(), color });
+  saveBoards(boards);
+  renderBoards();
+  showToast(`Board "${name.trim()}" created`);
+}
+
+// ── 改名 ──
+function renameBoard(boardId) {
+  const boards  = getBoards();
+  const board   = boards.find(b => b.id === boardId);
+  if (!board) return;
+
+  const newName = prompt('Rename board:', board.name);
+  if (!newName || !newName.trim() || newName.trim() === board.name) return;
+
+  board.name = newName.trim();
+  saveBoards(boards);
+  renderBoards();
+
+  // 如果目前正在這個 board，同步更新 topbar 標題
+  if (currentView === boardId) {
+    document.getElementById('board-title').textContent = board.name;
+  }
+  showToast(`Renamed to "${board.name}"`);
+}
+
+// ── 色盤 ──
+const PRESET_COLORS = [
+  '#AFA9EC','#7B6FBE','#5A4FA8',
+  '#5DCAA5','#4A9E8A','#2E7A65',
+  '#85B7EB','#5A8FC2','#2E5A8A',
+  '#FAC775','#C8882A','#9A6518',
+  '#F0997B','#D4748A','#A84B62',
+  '#D3D1C7','#888780','#1A1917',
+  '#C0DD97','#5F9E30','#9FE1CB',
+];
+
+let colorPickerTargetId = null; // 目前正在改哪個 board 的顏色
+
+function openColorPicker(event, boardId) {
+  event.stopPropagation();
+  colorPickerTargetId = boardId;
+
+  const boards  = getBoards();
+  const board   = boards.find(b => b.id === boardId);
+  const popover = document.getElementById('color-popover');
+
+  // 產生色塊
+  document.getElementById('color-swatches').innerHTML = PRESET_COLORS.map(c => `
+    <div class="color-swatch ${board.color === c ? 'selected' : ''}"
+      style="background:${c};"
+      onclick="applyPresetColor('${c}')"
+      title="${c}"></div>
+  `).join('');
+
+  // 設定 custom input 的目前顏色
+  document.getElementById('color-custom-input').value = board.color;
+
+  // 定位 popover 在圓點旁邊
+  const rect = event.target.getBoundingClientRect();
+  popover.style.top  = rect.top + 'px';
+  popover.style.left = (rect.right + 8) + 'px';
+  popover.classList.add('open');
+}
+
+function applyPresetColor(color) {
+  applyColor(color);
+}
+
+function applyCustomColor(color) {
+  applyColor(color);
+}
+
+function applyColor(color) {
+  if (!colorPickerTargetId) return;
+
+  const boards = getBoards();
+  const board  = boards.find(b => b.id === colorPickerTargetId);
+  if (!board) return;
+
+  board.color = color;
+  saveBoards(boards);
+  closeColorPicker();
+  renderBoards();
+  updateInsights();
+  showToast('Colour updated');
+}
+
+function closeColorPicker() {
+  document.getElementById('color-popover').classList.remove('open');
+  colorPickerTargetId = null;
+}
+
+// 點其他地方關閉色盤
+document.addEventListener('click', (e) => {
+  const popover = document.getElementById('color-popover');
+  if (popover && !popover.contains(e.target)) {
+    closeColorPicker();
+  }
+});
+
+
+/* ============================================================
+   5. Grid 渲染
+   ============================================================ */
+
+function renderGrid() {
+  const allItems = getItems();
+
+  // 根據目前 view 篩選
+  let items = allItems;
+  if (currentView === 'mine') {
+    items = allItems.filter(i => i.owner === 'me');
+  } else if (currentView !== 'all') {
+    items = allItems.filter(i => i.boardId === currentView);
+  }
+
+  // 再根據 filter chip 篩選
+  if (currentFilter === 'image') items = items.filter(i => i.type === 'image');
+  if (currentFilter === 'link')  items = items.filter(i => i.type === 'link');
+
+  // 更新 topbar meta
+  const boardName = currentView === 'all'  ? 'All saves'
+                  : currentView === 'mine' ? 'Added by me'
+                  : getBoards().find(b => b.id === currentView)?.name || '';
+  document.getElementById('board-title').textContent = boardName;
+  document.getElementById('board-meta').textContent  = `${items.length} item${items.length !== 1 ? 's' : ''}`;
+
+  const grid = document.getElementById('grid');
+
+  if (items.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1;">
+        <span>✦</span>
+        <p>No items yet — add your first inspiration</p>
+      </div>
+      <div class="add-card" onclick="openModal('upload')">
+        <span>＋</span><p>Add inspiration</p>
+      </div>`;
+    return;
+  }
+
+  // 最新的在前
+  const sorted = [...items].reverse();
+
+  grid.innerHTML = sorted.map(item => buildCard(item)).join('') +
+    `<div class="add-card" onclick="openModal('upload')"><span>＋</span><p>Add inspiration</p></div>`;
+}
+
+// 根據 item 資料建立卡片 HTML
+function buildCard(item) {
+  const boards = getBoards();
+  const board  = boards.find(b => b.id === item.boardId);
+
+  // 圖片或連結縮圖
+  let imgHtml = '';
+  if (item.type === 'image' && item.imageData) {
+    imgHtml = `<img class="card-img" src="${item.imageData}" alt="${item.title}" style="max-height:260px;">`;
+  } else if (item.type === 'link' && item.thumbnail) {
+    imgHtml = `<img class="card-img" src="${item.thumbnail}" alt="${item.title}" style="height:140px; object-fit:cover;">`;
+  } else {
+    // Fallback 佔位
+    const bg = item.type === 'link' ? '#DDE5F4' : '#EEEAE3';
+    const icon = item.type === 'link' ? '⬡' : '◻';
+    imgHtml = `<div class="card-img-placeholder" style="background:${bg}; height:100px;">${icon}</div>`;
+  }
+
+  // Board tag
+  const boardTag = board
+    ? `<span class="tag" style="background:${board.color}22;color:${board.color};">${board.name}</span>`
+    : '';
+
+  // Type tag
+  const typeTag = item.type === 'link'
+    ? `<span class="tag t-link">link</span>`
+    : `<span class="tag t-minimal">image</span>`;
+
+  return `
+    <div class="card" data-id="${item.id}" onclick="openCardDetail('${item.id}')">
+      <div class="card-delete" onclick="deleteItem(event, '${item.id}')">✕</div>
+      ${imgHtml}
+      <div class="card-body">
+        <div class="card-title">${item.title || 'Untitled'}</div>
+        <div class="card-source">${item.source || ''}</div>
+        ${item.note ? `<div class="card-source" style="margin-top:4px;font-style:italic;">${item.note}</div>` : ''}
+      </div>
+      <div class="card-footer">
+        <div class="card-tags">${typeTag}${boardTag}</div>
+        <div class="card-owner-av av-me">Yu</div>
+      </div>
+    </div>`;
+}
+
+
+/* ============================================================
+   6. Modal — 開啟 / 關閉
+   ============================================================ */
+
+function openModal(tab) {
+  document.getElementById('modal-bg').classList.add('open');
+  // 如果是從 Add link 按鈕進來，scroll 到連結區
+  if (tab === 'link') {
+    setTimeout(() => document.getElementById('url-input').focus(), 200);
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-bg').classList.remove('open');
+  resetModal();
+}
+
+function closeModalOutside(e) {
+  if (e.target === document.getElementById('modal-bg')) closeModal();
+}
+
+function resetModal() {
+  pendingImage = null;
+  previewData  = null;
+  document.getElementById('url-input').value    = '';
+  document.getElementById('title-input').value  = '';
+  document.getElementById('note-input').value   = '';
+  document.getElementById('url-preview').classList.remove('show');
+  document.getElementById('url-loading').classList.remove('show');
+  document.getElementById('img-preview-wrap').classList.remove('show');
+  document.getElementById('img-preview').src    = '';
+  document.getElementById('file-input').value   = '';
+  clearTimeout(urlTimer);
+}
+
+
+/* ============================================================
+   7. 圖片上傳處理
+   ============================================================ */
+
+// 使用者從 file picker 選了圖片
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) loadImageFile(file);
+}
+
+// 拖拉進來
+function handleDrop(event) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  const file = event.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadImageFile(file);
+}
+
+function handleDragOver(event) {
+  event.preventDefault();
+  event.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(event) {
+  event.currentTarget.classList.remove('drag-over');
+}
+
+// 把圖片讀成 base64 並顯示預覽
+function loadImageFile(file) {
+  // 限制 5MB
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Image too large (max 5MB)');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    pendingImage = e.target.result; // base64 字串
+    document.getElementById('img-preview').src = pendingImage;
+    document.getElementById('img-preview-wrap').classList.add('show');
+    // 自動填入檔案名作為標題
+    if (!document.getElementById('title-input').value) {
+      document.getElementById('title-input').value = file.name.replace(/\.[^.]+$/, '');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// 移除已選的圖片
+function removeImage() {
+  pendingImage = null;
+  document.getElementById('img-preview').src = '';
+  document.getElementById('img-preview-wrap').classList.remove('show');
+  document.getElementById('file-input').value = '';
+}
+
+
+/* ============================================================
+   8. 連結預覽（使用 microlink.io 免費 API）
+   ============================================================ */
+
+function handleUrlInput(val) {
+  clearTimeout(urlTimer);
+  previewData = null;
+
+  const preview = document.getElementById('url-preview');
+  const loading = document.getElementById('url-loading');
+
+  if (!val || !val.startsWith('http')) {
+    preview.classList.remove('show');
+    loading.classList.remove('show');
+    return;
+  }
+
+  // 防抖 800ms，避免每個字都打 API
+  loading.classList.add('show');
+  preview.classList.remove('show');
+
+  urlTimer = setTimeout(() => fetchLinkPreview(val), 800);
+}
+
+async function fetchLinkPreview(url) {
+  const loading = document.getElementById('url-loading');
+  const preview = document.getElementById('url-preview');
+
+  try {
+    // microlink.io 免費 API — 每月 100 次，夠 demo 用
+    // 未來可換成自己的後端
+    const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}&screenshot=false`;
+    const res    = await fetch(apiUrl);
+    const data   = await res.json();
+
+    if (data.status === 'success') {
+      const meta = data.data;
+      previewData = {
+        title:     meta.title || '',
+        thumbnail: meta.image?.url || null,
+        source:    new URL(url).hostname,
+      };
+
+      // 顯示縮圖
+      const imgContainer = document.getElementById('url-preview-img-container');
+      if (previewData.thumbnail) {
+        imgContainer.innerHTML = `<img class="url-preview-img" src="${previewData.thumbnail}" alt="">`;
+      } else {
+        imgContainer.innerHTML = `<div class="url-preview-img-placeholder">No preview available</div>`;
+      }
+
+      document.getElementById('preview-title').textContent  = previewData.title;
+      document.getElementById('preview-domain').textContent = previewData.source;
+
+      // 自動填入標題
+      if (!document.getElementById('title-input').value) {
+        document.getElementById('title-input').value = previewData.title;
+      }
+
+      loading.classList.remove('show');
+      preview.classList.add('show');
+    } else {
+      throw new Error('API error');
+    }
+
+  } catch (err) {
+    // API 失敗時用 fallback（只顯示 domain）
+    const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+    previewData = { title: domain, thumbnail: null, source: domain };
+
+    document.getElementById('url-preview-img-container').innerHTML =
+      `<div class="url-preview-img-placeholder">Preview not available</div>`;
+    document.getElementById('preview-title').textContent  = domain;
+    document.getElementById('preview-domain').textContent = url.length > 50 ? url.slice(0,50)+'…' : url;
+
+    loading.classList.remove('show');
+    preview.classList.add('show');
+  }
+}
+
+
+/* ============================================================
+   9. 儲存收藏
+   ============================================================ */
+
+function saveItem() {
+  const urlVal   = document.getElementById('url-input').value.trim();
+  const titleVal = document.getElementById('title-input').value.trim();
+  const noteVal  = document.getElementById('note-input').value.trim();
+  const boardId  = document.getElementById('board-select').value;
+
+  // 判斷類型
+  const isImage = !!pendingImage;
+  const isLink  = !!urlVal;
+
+  if (!isImage && !isLink) {
+    showToast('Please add an image or a link');
+    return;
+  }
+
+  // 建立新的 item 物件
+  const item = {
+    id:        Date.now().toString(),          // 簡單用時間戳當 id
+    type:      isImage ? 'image' : 'link',
+    title:     titleVal || (previewData?.title) || (isLink ? urlVal : 'Untitled'),
+    note:      noteVal,
+    boardId:   boardId,
+    owner:     'me',
+    createdAt: new Date().toISOString(),
+    // 圖片：base64 data
+    imageData: isImage ? pendingImage : null,
+    // 連結：原始 url + 抓到的縮圖 + domain
+    url:       isLink ? urlVal : null,
+    thumbnail: isLink ? (previewData?.thumbnail || null) : null,
+    source:    isLink ? (previewData?.source || new URL(urlVal).hostname) : 'uploaded',
+  };
+
+  // 儲存到 localStorage
+  const items = getItems();
+  items.push(item);
+  saveItems(items);
+
+  // 更新 UI
+  closeModal();
+  renderGrid();
+  renderBoards();
+  updateCounts();
+  updateInsights();
+  showToast('Saved to ' + (getBoards().find(b => b.id === boardId)?.name || 'board'));
+}
+
+
+/* ============================================================
+   10. 刪除收藏
+   ============================================================ */
+
+function deleteItem(event, itemId) {
+  event.stopPropagation(); // 避免觸發 card click
+
+  if (!confirm('Remove this item?')) return;
+
+  const items = getItems().filter(i => i.id !== itemId);
+  saveItems(items);
+  renderGrid();
+  renderBoards();
+  updateCounts();
+  updateInsights();
+  showToast('Item removed');
+}
+
+
+/* ============================================================
+   11. 卡片詳細頁（簡單 alert，之後可做成 modal）
+   ============================================================ */
+
+function openCardDetail(itemId) {
+  const item = getItems().find(i => i.id === itemId);
+  if (!item) return;
+
+  // 如果是連結，直接在新 tab 打開
+  if (item.type === 'link' && item.url) {
+    window.open(item.url, '_blank');
+  }
+  // 圖片可以做 lightbox，目前先留空
+}
+
+
+/* ============================================================
+   12. 篩選
+   ============================================================ */
+
+function setFilter(el, filter) {
+  currentFilter = filter;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderGrid();
+}
+
+function setNavView(el, view) {
+  currentView = view;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.board-row').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderGrid();
+  updateInsights();
+}
+
+
+/* ============================================================
+   13. Insight 面板更新
+   ============================================================ */
+
+function updateInsights() {
+  const items = getItems();
+
+  const imageCount = items.filter(i => i.type === 'image').length;
+  const linkCount  = items.filter(i => i.type === 'link').length;
+  const total      = items.length || 1;
+
+  document.getElementById('insight-images').textContent = imageCount;
+  document.getElementById('insight-links').textContent  = linkCount;
+  document.getElementById('bar-images').style.width = Math.round(imageCount / total * 100) + '%';
+  document.getElementById('bar-links').style.width  = Math.round(linkCount  / total * 100) + '%';
+
+  // Top boards
+  const boards = getBoards();
+  const boardCounts = boards.map(b => ({
+    ...b,
+    count: items.filter(i => i.boardId === b.id).length,
+  })).filter(b => b.count > 0).sort((a,b) => b.count - a.count).slice(0, 4);
+
+  const boardsEl = document.getElementById('insight-boards');
+  if (boardCounts.length === 0) {
+    boardsEl.innerHTML = `<div style="font-size:12px;color:var(--text3);">No boards yet</div>`;
+  } else {
+    const max = boardCounts[0].count;
+    boardsEl.innerHTML = boardCounts.map(b => `
+      <div class="taste-row">
+        <div class="taste-header">
+          <span class="taste-name">${b.name}</span>
+          <span class="taste-val">${b.count}</span>
+        </div>
+        <div class="bar-bg"><div class="bar" style="width:${Math.round(b.count/max*100)}%;background:${b.color};"></div></div>
+      </div>`).join('');
+  }
+
+  // Recent sources
+  const sources = {};
+  items.forEach(i => { if (i.source) sources[i.source] = (sources[i.source] || 0) + 1; });
+  const topSources = Object.entries(sources).sort((a,b)=>b[1]-a[1]).slice(0,4);
+
+  const sourcesEl = document.getElementById('insight-sources');
+  if (topSources.length === 0) {
+    sourcesEl.innerHTML = `<div style="font-size:12px;color:var(--text3);">No saves yet</div>`;
+  } else {
+    const maxS = topSources[0][1];
+    sourcesEl.innerHTML = topSources.map(([name, count]) => `
+      <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;margin-bottom:8px;">
+        <span style="color:var(--text2);">${name}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:60px;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:${Math.round(count/maxS*100)}%;background:var(--purple);border-radius:2px;"></div>
+          </div>
+          <span style="color:var(--text3);width:20px;text-align:right;">${count}</span>
+        </div>
+      </div>`).join('');
+  }
+}
+
+// 更新 sidebar 的 All / Mine 數字
+function updateCounts() {
+  const items = getItems();
+  document.getElementById('count-all').textContent  = items.length;
+  document.getElementById('count-mine').textContent = items.filter(i => i.owner === 'me').length;
+}
+
+
+/* ============================================================
+   14. 右側面板 toggle
+   ============================================================ */
+
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('panel').classList.toggle('collapsed', !panelOpen);
+}
+
+
+/* ============================================================
+   15. Toast 通知
+   ============================================================ */
+
+let toastTimer = null;
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+}
+
+
+/* ============================================================
+   16. Profile — 編輯自己的資料
+   ============================================================ */
+
+// 頭像顏色預設組合 [背景色, 文字色]
+const AVATAR_COLORS = [
+  ['#E8E4F8','#5A4FA8'], ['#FAE4EA','#A84B62'], ['#D9F0EA','#2E7A65'],
+  ['#FDF0DC','#9A6518'], ['#DDE5F4','#2E5A8A'], ['#F4E8E0','#8A4A2E'],
+  ['#D9EDE8','#2E7A65'], ['#EDE9E1','#5C5649'], ['#F0E8DC','#7A5A3C'],
+  ['#E4EDDE','#4A6B35'], ['#EEE4EC','#7A4A6B'], ['#D9E8F0','#2E5A7A'],
+];
+
+let selectedFriendColorIdx  = 0;
+let selectedProfileColorIdx = 0;
+
+// Sidebar — 渲染自己的 profile
+function renderSidebarProfile() {
+  const p = getProfile();
+  const initials = p.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase() || 'Me';
+  const el = document.getElementById('sidebar-my-avatar');
+  el.textContent       = initials;
+  el.style.background  = p.color;
+  el.style.color       = p.textColor;
+  document.getElementById('sidebar-my-name').textContent   = p.name || 'Your name';
+  document.getElementById('sidebar-my-handle').textContent = p.handle || '@you';
+}
+
+// 開啟 Profile modal
+function openProfileModal() {
+  const p = getProfile();
+  document.getElementById('profile-name-input').value   = p.name;
+  document.getElementById('profile-handle-input').value = p.handle;
+  document.getElementById('profile-bio-input').value    = p.bio || '';
+
+  selectedProfileColorIdx = Math.max(0, AVATAR_COLORS.findIndex(c => c[0] === p.color));
+  renderAvatarColorPicks('avatar-color-picks', selectedProfileColorIdx, idx => {
+    selectedProfileColorIdx = idx;
+    updateProfilePreview();
+  });
+  updateProfilePreview();
+  document.getElementById('profile-modal-bg').classList.add('open');
+}
+
+function closeProfileModal() { document.getElementById('profile-modal-bg').classList.remove('open'); }
+function closeProfileModalOutside(e) { if (e.target === document.getElementById('profile-modal-bg')) closeProfileModal(); }
+
+// 即時預覽頭像
+function updateProfilePreview() {
+  const name     = document.getElementById('profile-name-input').value.trim();
+  const initials = name.split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase() || '?';
+  const [bg, tc] = AVATAR_COLORS[selectedProfileColorIdx];
+  const el = document.getElementById('profile-preview-avatar');
+  el.textContent      = initials;
+  el.style.background = bg;
+  el.style.color      = tc;
+}
+
+// 儲存 profile
+function saveProfile() {
+  const name   = document.getElementById('profile-name-input').value.trim();
+  const handle = document.getElementById('profile-handle-input').value.trim();
+  const bio    = document.getElementById('profile-bio-input').value.trim();
+  if (!name) { showToast('Please enter a name'); return; }
+  const [color, textColor] = AVATAR_COLORS[selectedProfileColorIdx];
+  saveProfile_data({ name, handle: handle || '@' + name.toLowerCase().replace(/\s+/g,''), bio, color, textColor });
+  renderSidebarProfile();
+  closeProfileModal();
+  showToast('Profile saved ✓');
+}
+
+
+/* ============================================================
+   17. Friends — 新增 / 管理朋友
+   ============================================================ */
+
+// Sidebar — 渲染朋友小頭像
+function renderSidebarFriends() {
+  const friends   = getFriends();
+  const container = document.getElementById('sidebar-friends');
+  if (friends.length === 0) {
+    container.innerHTML = `<div style="font-size:11px;color:var(--text3);">No friends yet</div>`;
+    return;
+  }
+  container.innerHTML = friends.map(f => {
+    const initials = f.name.trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase() || '?';
+    return `
+      <div class="friend-chip" onclick="openFriendsModal()" title="${f.name}">
+        <div class="friend-avatar" style="background:${f.color};color:${f.textColor};">${initials}</div>
+        <span class="friend-chip-name">${f.name.split(' ')[0]}</span>
+      </div>`;
+  }).join('');
+}
+
+// 開啟 Friends modal
+function openFriendsModal() {
+  selectedFriendColorIdx = 0;
+  renderFriendsList();
+  renderAvatarColorPicks('new-friend-color-picks', 0, idx => { selectedFriendColorIdx = idx; });
+  document.getElementById('new-friend-name').value   = '';
+  document.getElementById('new-friend-handle').value = '';
+  document.getElementById('friends-modal-bg').classList.add('open');
+}
+
+function closeFriendsModal() { document.getElementById('friends-modal-bg').classList.remove('open'); }
+function closeFriendsModalOutside(e) { if (e.target === document.getElementById('friends-modal-bg')) closeFriendsModal(); }
+
+// 渲染朋友清單（modal 內）
+function renderFriendsList() {
+  const friends   = getFriends();
+  const container = document.getElementById('friends-list-container');
+  if (friends.length === 0) {
+    container.innerHTML = `<div class="friend-empty">No friends added yet</div>`;
+    return;
+  }
+  container.innerHTML = `<div class="friends-list">` + friends.map(f => {
+    const initials = f.name.trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase() || '?';
+    return `
+      <div class="friend-row">
+        <div style="width:36px;height:36px;font-size:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:500;flex-shrink:0;background:${f.color};color:${f.textColor};">${initials}</div>
+        <div class="friend-row-info">
+          <div class="friend-row-name">${f.name}</div>
+          <div class="friend-row-handle">${f.handle || ''}</div>
+        </div>
+        <div class="friend-row-remove" onclick="removeFriend('${f.id}')" title="Remove">✕</div>
+      </div>`;
+  }).join('') + `</div>`;
+}
+
+// 新增朋友
+function addFriend() {
+  const name   = document.getElementById('new-friend-name').value.trim();
+  const handle = document.getElementById('new-friend-handle').value.trim();
+  if (!name) { showToast('Please enter a name'); return; }
+  const [color, textColor] = AVATAR_COLORS[selectedFriendColorIdx];
+  const friends = getFriends();
+  friends.push({ id: 'f-' + Date.now(), name, handle: handle || '@' + name.toLowerCase().replace(/\s+/g,''), color, textColor });
+  saveFriends(friends);
+  renderFriendsList();
+  renderSidebarFriends();
+  document.getElementById('new-friend-name').value   = '';
+  document.getElementById('new-friend-handle').value = '';
+  selectedFriendColorIdx = 0;
+  renderAvatarColorPicks('new-friend-color-picks', 0, idx => { selectedFriendColorIdx = idx; });
+  showToast(`${name} added ✓`);
+}
+
+// 刪除朋友
+function removeFriend(friendId) {
+  if (!confirm('Remove this friend?')) return;
+  saveFriends(getFriends().filter(f => f.id !== friendId));
+  renderFriendsList();
+  renderSidebarFriends();
+  showToast('Friend removed');
+}
+
+// 通用：產生頭像顏色色塊
+function renderAvatarColorPicks(containerId, selectedIdx, onSelect) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  // 儲存 callback 到 window（避免 inline onclick 閉包問題）
+  window['_cb_' + containerId] = onSelect;
+  container.innerHTML = AVATAR_COLORS.map(([bg], idx) => `
+    <div class="avatar-color-pick ${idx === selectedIdx ? 'selected' : ''}"
+      style="background:${bg}; border-color:${idx === selectedIdx ? '#1A1917' : 'transparent'};"
+      onclick="
+        document.querySelectorAll('#${containerId} .avatar-color-pick').forEach(el => { el.classList.remove('selected'); el.style.borderColor='transparent'; });
+        this.classList.add('selected'); this.style.borderColor='#1A1917';
+        window['_cb_${containerId}'](${idx});
+      "></div>
+  `).join('');
+}
+
+</script>
+</body>
+</html>
